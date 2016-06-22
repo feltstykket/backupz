@@ -9,7 +9,7 @@ import os
 
 import django
 
-from .utils import *
+from .lib import *
 import settings
 
 DAYS = ((0, 'Monday'),

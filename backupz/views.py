@@ -10,7 +10,7 @@ from django.db import transaction
 import datetime
 
 from .models import *
-from .utils import *
+from .lib import *
 
 def messages_traceback(request, comment=None):
     base = 'Sorry, a serious error occurred, please copy this box and send it to <tt>ucd-puppet-admins@ucdavis.edu</tt>'
