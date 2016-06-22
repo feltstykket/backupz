@@ -323,6 +323,11 @@ class Backup(models.Model):
             if t and t.rsync_options:
                 args.append([x.value for x in t.rsync_options.all()])
 
+        fname = os.path.join(settings.config_path, 'exclude', self.job.host.name)
+        print('fname: %s' % fname)
+        if os.path.isfile(fname):
+            args.append("--exclude-from='%s'" % fname)
+
         return args
 
     def cli(self):
@@ -346,13 +351,13 @@ class Backup(models.Model):
         # /physics/backups/phys-solid/var-spool-mail
         transport = self.job.config.transport
 
-        command = []
-        command.append(transport.command)
-        command.append(self.rsync_arguments())
-        command.append("--logfile='%s'" % self.log_file())
-        command.append("--rsh='%s -i %s'" % (self.job.config.ssh_command, self.job.config.ssh_key))
-        command.append("%s@%s%s'%s'" % (self.job.config.user, self.job.host.ip, transport.separator, self.job.path.rstrip('/')))
-        command.append(self.job.fs_path())
+        command = [transport.command,
+                   self.rsync_arguments(),
+                   "--logfile='%s'" % self.log_file(),
+                   "--rsh='%s -i %s'" % (self.job.config.ssh_command, self.job.config.ssh_key),
+                   "%s@%s%s'%s'" % (self.job.config.user, self.job.host.ip, transport.separator, self.job.path.rstrip('/')),
+                   self.job.fs_path()
+                   ]
 
         pw = self.job.config.password
         if pw:
