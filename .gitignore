@@ -1,0 +1,8 @@
+settings_private.py
+
+backupz/migrations/
+
+.idea
+.qiv-select/
+*.pyc
+*~

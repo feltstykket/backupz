@@ -1,0 +1,7 @@
+# Use something secure, like: 
+# tr -cd '[:alnum:][!@#$%^&\*()-=_\+\[\]\{}|;:,\./<>? ]' < /dev/urandom | head -c${1:-50}; echo
+SECRET_KEY = 'CHANGE_ME'
+
+# Use something secure, like: 
+# pwgen -s 36 1
+DATABASE_PASSWORD = 'CHANGE_ME'
