@@ -5,9 +5,12 @@ setopt warn_create_global
 
 PROGRAM=${0:t}
 
-sudo ./database-clear.sh
+cp -a ./database-clear.sh /tmp/
+/tmp/database-clear.sh
 
 rm backupz/migrations/*.py || true
+
+find backupz/ -name \*.pyc -delete
 
 ./manage.py makemigrations
 
