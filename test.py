@@ -15,7 +15,20 @@ start = datetime.datetime.now()
 
 from backupz.models import *
 
-jobs = Job.objects.filter(host__name='phys-solid')
+defaults = DefaultOption.objects.get()
+
+#print('Defaults config file: ', defaults.config_file())
+
+host = Host.objects.get(name='phys-solid')
+jobs = Job.objects.filter(host=host)
+
+to_run, not_run = Job.objects.to_run(start)
+for j in to_run:
+    print('Run: %s : %s' % (j, j.should_start()))
+print()
+for j in not_run:
+    print('Not run: %s : %s' % (j, j.should_start()))
+print()
 
 for j in jobs:
     print("vvvvvvvvvv %s vvvvvvvvvv" % j)
@@ -24,7 +37,6 @@ for j in jobs:
         print('area:config_file: ', j.host.backup_area.config_file())
     print('fs_path: ', j.fs_path())
     print('zfs_path: ', j.zfs_path())
-
 
     print()
     print('partial_okay: ', j.config.partial_okay)
@@ -46,4 +58,8 @@ for j in jobs:
         print(" ", c)
 
     print()
-    time.sleep(1.6)
+    print('Host backups: ', host.list_backups())
+    print('Job backups: ', j.list_backups())
+
+    print()
+    #time.sleep(1.6)
