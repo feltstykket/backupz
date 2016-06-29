@@ -1,6 +1,8 @@
 from __future__ import unicode_literals
 
 from django.db import models
+from django.db.models import Q
+
 import solo.models
 import multiselectfield
 
@@ -9,8 +11,12 @@ import os
 
 import django
 
-from .lib import *
+from . import lib
+from .zfs import ZFS
+
 import settings
+
+zfs = ZFS()
 
 DAYS = ((0, 'Monday'),
         (1, 'Tuesday'),
@@ -20,6 +26,7 @@ DAYS = ((0, 'Monday'),
         (5, 'Saturday'),
         (6, 'Sunday'),
         )
+
 
 def _config_file(what, conf):
     p = os.path.join(settings.config_path, what)
@@ -50,7 +57,6 @@ class PostBackupScript(models.Model):
     def __str__(self):  # __unicode__ on Python 2
         return '%s: %s' % (self.name, self.description)
 
-
     class Meta:
         ordering = ('name',)
 
@@ -61,7 +67,6 @@ class SnapshotsToKeep(models.Model):
     monthly = models.PositiveSmallIntegerField()
     yearly = models.PositiveSmallIntegerField()
 
-
     def __str__(self):
         return 'Daily: %d, Weekly: %d, Monthly: %d, Yearly: %d' % (self.daily, self.weekly, self.monthly, self.yearly)
 
@@ -70,10 +75,10 @@ class SnapshotsToKeep(models.Model):
         verbose_name_plural = "Snapshots to Keep"
 
 
-
 class RsyncOption(models.Model):
     name = models.CharField(max_length=50, unique=True)
     value = models.CharField(max_length=50, unique=True)
+
     # "--archive --one-file-system --delete"
 
     def __str__(self):  # __unicode__ on Python 2
@@ -145,7 +150,8 @@ class BackupZOption(models.Model):
         (0, 'Linear'),
         (1, 'Exponential'),
     )
-    expiration_algorithm = models.SmallIntegerField(choices=EXPIRATION_ALG, default=EXPIRATION_ALG[0][0], null=True, blank=True)
+    expiration_algorithm = models.SmallIntegerField(choices=EXPIRATION_ALG, default=EXPIRATION_ALG[0][0],
+                                                    null=True, blank=True)
 
     owner = models.ForeignKey(Owner, null=True, blank=True)
 
@@ -153,8 +159,10 @@ class BackupZOption(models.Model):
         abstract = True
 
 
-
 class DefaultOption(solo.models.SingletonModel, BackupZOption):
+    def config_file(self):
+        return _config_file('areas', 'default')
+
     def __str__(self):
         return 'Default BackupZ Options'
 
@@ -179,7 +187,8 @@ class Area(BackupZOption):
 
     def _path(self, p, which, what):
 
-        p = os.path.join(p, what)
+        if what:
+            p = os.path.join(p, what)
 
         if which is not None:
             if isinstance(which, Job):
@@ -191,10 +200,8 @@ class Area(BackupZOption):
 
         return p
 
-
     def config_file(self):
         return _config_file('areas', self.display_name)
-
 
     class Meta:
         ordering = ('zpool',)
@@ -394,55 +401,66 @@ class Backup(models.Model):
     def rsync_arguments(self):
         args = []
 
-        for t in [DefaultOption.objects.get(), self.job.config.transport, self.job.backup_area, self.job.host, self.job]:
+        for t in [DefaultOption.objects.get(),
+                  self.job.config.transport,
+                  self.job.backup_area,
+                  self.job.host,
+                  self.job]:
             if t and t.rsync_options:
                 args.append([x.value for x in t.rsync_options.all()])
 
         fname = os.path.join(settings.config_path, 'exclude', self.job.host.name)
-        print('fname: %s' % fname)
         if os.path.isfile(fname):
             args.append("--exclude-from='%s'" % fname)
 
         return args
 
     def cli(self):
-        # ORIG
-        # rsync
-        # --archive --one-file-system --delete
-        # -e '/usr/bin/ssh -i /root/.ssh/default.key'
-        # --log-file=/backupz/log/monitoring/etc-2016-06-20_22-30.53.log
-        # --exclude=".gvfs"
-        # --timeout=3600
-        # --exclude-from='/backupz/extras/global.excludes'
-        # root@monitoring.metro.ucdavis.edu:"/etc" .
+        """
+        ORIG
+        rsync
+        --archive --one-file-system --delete
+        -e '/usr/bin/ssh -i /root/.ssh/default.key'
+        --log-file=/backupz/log/monitoring/etc-2016-06-20_22-30.53.log
+        --exclude=".gvfs"
+        --timeout=3600
+        --exclude-from='/backupz/extras/global.excludes'
+        root@monitoring.metro.ucdavis.edu:"/etc" .
 
-        # NEW
-        # /usr/bin/rsync
-        # --exclude-from='/backupz/extras/global.excludes'
-        # --archive --delete --one-file-system --timeout=3600 --timeout=36000
-        # --logfile='/var/log/backupz/phys-solid/var-spool-mail-2016-21-06_16-05.49.log'
-        # --rsh='/opt/csw/bin/ssh -i /root/.ssh/default.key'
-        # root@169.237.42.75:'/var/spool/mail'
-        # /physics/backups/phys-solid/var-spool-mail
+        NEW
+        /usr/bin/rsync
+          --exclude-from='/backupz/exclude/linux'
+          --archive
+          --delete
+          --one-file-system
+          --timeout=3600
+          --timeout=36000
+          --exclude-from='/etc/backupz/exclude/phys-solid'
+          --logfile='/var/log/backupz/phys-solid/var-spool-mail-2016-22-06_11-52.13.log'
+          --rsh='/opt/csw/bin/ssh -i /root/.ssh/default.key'
+          root@169.237.42.75:'/var/spool/mail'
+          /physics/backups/phys-solid/var-spool-mail
+        """
+
         transport = self.job.config.transport
 
         command = [transport.command,
                    self.rsync_arguments(),
                    "--logfile='%s'" % self.log_file(),
                    "--rsh='%s -i %s'" % (self.job.config.ssh_command, self.job.config.ssh_key),
-                   "%s@%s%s'%s'" % (self.job.config.user, self.job.host.ip, transport.separator, self.job.path.rstrip('/')),
-                   self.job.fs_path()
+                   "%s@%s%s'%s'" % (
+                       self.job.config.user, self.job.host.ip, transport.separator, self.job.path.rstrip('/')),
+                   self.job.fs_path().rstrip('/')
                    ]
 
         pw = self.job.config.password
         if pw:
             os.environ['RSYNC_PASSWORD'] = pw
 
-        return list(flatten(command))
-
+        return list(lib.flatten(command))
 
     def __str__(self):  # __unicode__ on Python 2
-        return "%s: %s @ %s" % (self.job.host.name, self.job.name, self.timestamp())
+        return "%s/%s @ %s" % (self.job.host.name, self.job.name, self.timestamp())
 
     class Meta:
         ordering = ('job__host__name', 'job__name', 'start',)
