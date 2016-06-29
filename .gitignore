@@ -2,6 +2,8 @@ settings_private.py
 
 backupz/migrations/
 
+test-*.py
+
 .idea
 .qiv-select/
 *.pyc
