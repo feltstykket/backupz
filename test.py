@@ -63,3 +63,5 @@ for j in jobs:
 
     print()
     #time.sleep(1.6)
+
+print(zfs.isfilesystem.cache_info())

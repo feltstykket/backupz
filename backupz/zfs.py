@@ -3,6 +3,7 @@ The beginning of a module to handle the BackupZ ZFS calls.
 """
 
 import collections
+import functools
 
 from . import lib
 
@@ -13,9 +14,10 @@ class ZFS(object):
     def __init__(self):
         pass
 
+    @functools.lru_cache(maxsize=128, typed=False)
     def isfilesystem(self, path, create=True):
         r = lib.run_command([ZFS.zfs_command, 'list', '-o', 'name', '-H', path])
-        if create and r.rc == 1 and r.out.rstrip().endswith('dataset does not exist'):
+        if create and r.rc == 1 and r.err.rstrip().endswith('dataset does not exist'):
             return self.create_filesystem(path)
 
         if r.rc != 0 or r.out.rstrip() != path:
