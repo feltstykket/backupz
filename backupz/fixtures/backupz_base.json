@@ -111,7 +111,8 @@
                 3,
                 2,
                 5
-            ]
+            ],
+            "separator": ":"
         },
         "model": "backupz.transport",
         "pk": 1
@@ -202,7 +203,7 @@
     },
     {
         "fields": {
-            "name": "Dept"
+            "name": "Departmental"
         },
         "model": "backupz.owner",
         "pk": 13
@@ -342,13 +343,14 @@
     },
     {
         "fields": {
-            "owner": null,
             "allowed_days": "0,1,2,3,4,5,6",
             "email_from": "BackupZ <backupz@ucdavis.edu>",
             "email_to": "",
             "enabled": true,
+            "expiration_algorithm": 0,
             "frequency": "1 00:00:00",
             "max_jobs": 20,
+            "owner": null,
             "partial_okay": false,
             "password": "",
             "post_backup_script": null,
@@ -371,21 +373,22 @@
     },
     {
         "fields": {
-            "owner": null,
             "allowed_days": null,
             "display_name": "Physics",
             "email_from": "Physics IT Help <help@ticket.physics.ucdavis.edu>",
             "email_to": "",
             "enabled": true,
-            "file_timestamp": "2016-06-21T15:49:34.807",
+            "expiration_algorithm": 0,
+            "file_timestamp": "2016-07-01T17:11:49.565",
             "frequency": null,
             "max_jobs": null,
-            "mountpoint": "/physics/",
+            "mountpoint": "/physics",
+            "owner": null,
             "partial_okay": null,
             "password": "",
             "post_backup_script": null,
             "priority": null,
-            "quota": null,
+            "quota": 65970697666560,
             "rsync_options": [],
             "schedule": null,
             "snapshots_to_keep": null,
@@ -395,24 +398,26 @@
             "use_max": null,
             "use_warn": null,
             "user": "",
-            "zpool": "physics"
+            "zpool": "descolada/backups/backupz"
         },
         "model": "backupz.area",
         "pk": 3
     },
     {
         "fields": {
-            "owner": null,
+            "allow_concurrent": false,
             "allowed_days": null,
             "backup_area": 3,
             "email_from": "",
             "email_to": "backups@ticket.physics.ucdavis.edu",
             "enabled": true,
-            "file_timestamp": "2016-06-21T14:52:44.858",
+            "expiration_algorithm": 0,
+            "file_timestamp": "2016-06-24T16:20:56.242",
             "frequency": null,
             "ip": "169.237.42.75",
             "max_jobs": null,
             "name": "phys-solid",
+            "owner": 17,
             "partial_okay": null,
             "password": "",
             "post_backup_script": null,
@@ -435,16 +440,17 @@
     },
     {
         "fields": {
-            "owner": null,
             "allowed_days": "0,1,2,3,4",
             "backup_area": null,
             "email_from": "",
             "email_to": "",
             "enabled": true,
+            "expiration_algorithm": 0,
             "frequency": null,
             "host": 1,
             "max_jobs": null,
             "name": "var-spool-mail",
+            "owner": 13,
             "partial_okay": null,
             "password": "",
             "path": "/var/spool/mail",
@@ -466,16 +472,17 @@
     },
     {
         "fields": {
-            "owner": null,
             "allowed_days": null,
             "backup_area": null,
             "email_from": "",
             "email_to": "",
             "enabled": true,
+            "expiration_algorithm": 0,
             "frequency": null,
             "host": 1,
             "max_jobs": null,
             "name": "etc",
+            "owner": 17,
             "partial_okay": null,
             "password": "",
             "path": "/etc",
@@ -497,7 +504,7 @@
     },
     {
         "fields": {
-            "end": "2016-06-21T16:31:17",
+            "end": "2016-06-24T16:50:53",
             "job": 2,
             "start": "2016-06-21T16:12:37",
             "status": 0
