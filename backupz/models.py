@@ -7,12 +7,15 @@ import solo.models
 import multiselectfield
 
 import django_extras.db.models
+
+import collections
 import os
 
 import django
 
 from . import lib
 from .zfs import ZFS
+from . import bytefield
 
 import settings
 
@@ -119,7 +122,7 @@ class BackupZOption(models.Model):
     email_to = models.CharField(max_length=200, null=True, blank=True)
     email_from = models.CharField(max_length=200, null=True, blank=True)
 
-    quota = models.PositiveIntegerField(null=True, blank=True)
+    quota = bytefield.BytesField(null=True, blank=True)
 
     ssh_key = models.CharField(max_length=200, null=True, blank=True)
     ssh_command = models.CharField(max_length=200, null=True, blank=True)
@@ -310,26 +313,32 @@ class Job(BackupZOption):
 
     objects = JobManager()
 
-    def should_start(self, stamp=django.utils.timezone.now(), create_zfs_filesystems=True):
+    def should_start(self, stamp=django.utils.timezone.now()):
         """
         CAUTION: you MUST check the return value against `is [not] True' as this returns a string for False.
         """
         schedule = self.config.schedule
 
+        # Make sure the job/host/area/default is enabled.
         e = self._enabled()
         if e is not True:
             return e
 
-        # TODO: check if the area is mounted: https://docs.python.org/3/library/os.path.html#os.path.ismount
-        zfs_filesystems = (self._active_backup_area().zfs_path(None, None),
-                           self._active_backup_area().zfs_path(None),
+        # Don't auto-create the top level file-system. This is usually created when the pool is created.
+        root_fs = self._active_backup_area().zfs_path(None, None)
+        if not zfs.isfilesystem(root_fs):
+            return 'Top level ZFS file-system does not exist: %s' % root_fs
+
+        # Auto-create file-systems under the top level if necessary.
+        zfs_filesystems = (self._active_backup_area().zfs_path(None),
                            self._active_backup_area().zfs_path(self.host),
                            self._active_backup_area().zfs_path(self),
                            )
         for z in zfs_filesystems:
-            if not zfs.isfilesystem(z, create=create_zfs_filesystems):
-                return 'ZFS file-system does not exist: %s' % z
+            if not zfs.create_filesystem(z):
+                return 'ZFS file-system does not exist and error creating: %s' % z
 
+        # Make sure all ZFS file-systems are actually mounted.
         mountpoints = ((self._active_backup_area().fs_path(None, None), 'Area'),
                        (self._active_backup_area().fs_path(None), 'Backups'),
                        (self._active_backup_area().fs_path(self.host), 'Host'),
@@ -339,29 +348,48 @@ class Job(BackupZOption):
             if not os.path.ismount(mp[0]):
                 return '%s mount point is not mounted: %s' % (mp[1], mp[0])
 
-        # TODO: check quota here
-        # TODO: check max_jobs against host/area/defaults
+        # TODO: check quota for job/host/area/default here
+        ZFSQuota = collections.namedtuple('ZFSQuota', 'quota zfs_path s')
+
+        quotas = (ZFSQuota(self.quota, self._active_backup_area().zfs_path(self), 'Job'),
+                  ZFSQuota(self.host.quota, self._active_backup_area().zfs_path(self.host), 'Host'),
+                  ZFSQuota(self._active_backup_area().quota, self._active_backup_area().zfs_path(None), 'Area'),
+                  ZFSQuota(DefaultOption.objects.get(), self._active_backup_area().zfs_path(None, None), 'Default')
+                  )
+
+        for q in quotas:
+            #if q is not None:
+            used = zfs.used(q.zfs_path)
+            print(q.zfs_path, used.out, q.quota)
 
         try:
+            # Check to make sure no job is currently running.
             backups = Backup.objects.filter(job=self).latest(field_name='start')
             if backups.status < 0 or backups.end is None:
                 return 'Job currently in progress'
 
+            # Make sure it's time for another backup.
+            # TODO: make a function for this. The JobModel will need this info too.
             if backups.start + self.config.frequency > stamp:
                 return 'Not yet time for another job, last was %s' % backups.start
         except Backup.DoesNotExist:
             pass
 
         try:
-            backups = Backup.objects.filter(Q(status__lt=0) | Q(end__isnull=True), job__host=self.host)
-            if len(backups) > 0 and not self.host.allow_concurrent:
-                return 'Concurrent backups to host not allowed (%s)' % ", ".join([str(x) for x in backups])
+            # Check concurrent backups counts
+            # TODO: check max_jobs against host/area/defaults
+            if not self.host.allow_concurrent:
+                backups = Backup.objects.filter(Q(status__lt=0) | Q(end__isnull=True), job__host=self.host)
+                if len(backups) > 0:
+                    return 'Concurrent backups to host not allowed (%s)' % ", ".join([str(x) for x in backups])
         except Backup.DoesNotExist:
             pass
 
+        # Make sure this is an allowed day.
         if str(stamp.weekday()) not in self.config.allowed_days:
             return 'Today not an allowed day'
 
+        # And finally, check against the allowed time.
         if schedule.start_time <= schedule.end_time:
             if schedule.start_time <= stamp.time() <= schedule.end_time:
                 return True
