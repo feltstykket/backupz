@@ -64,5 +64,6 @@ for j in jobs:
     print()
     #time.sleep(1.6)
 
-print(zfs.isfilesystem.cache_info())
-print(zfs.used.cache_info())
+print('zfs.isfilesystem: ', zfs.isfilesystem.cache_info())
+print('zfs.used: ', zfs.used.cache_info())
+print('Job.seconds: ', Job.seconds_late.cache_info())
