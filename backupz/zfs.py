@@ -7,9 +7,10 @@ import functools
 
 from . import lib
 
+
 class ZFS(object):
-    zfs_command = '/sbin/zfs'
-    zpool_command = '/sbin/zpool'
+    commands = {'zfs': '/sbin/zfs',
+                'zpool': '/sbin/zpool'}
 
     def __init__(self):
         pass
@@ -21,7 +22,7 @@ class ZFS(object):
         # NAME                        USED  AVAIL  REFER  MOUNTPOINT
         # descolada/backups/backupz   480K   417G    96K  /physics
 
-        r = lib.run_command([ZFS.zfs_command, 'list', '-o', 'name', '-H', path])
+        r = lib.run_command([ZFS.commands['zfs'], 'list', '-o', 'name', '-H', path])
 
         if r.rc != 0 or r.out.rstrip() != path:
             return False
@@ -35,9 +36,10 @@ class ZFS(object):
         if self.isfilesystem(path):
             return True
 
-        r = lib.run_command([ZFS.zfs_command, 'create', path])
+        r = lib.run_command([ZFS.commands['zfs'], 'create', path])
 
         if r.rc != 0 and r.err.rstrip() != "cannot create '%s': dataset already exists" % path:
+            # All errors but dataset already exist is terminal
             raise RuntimeError(r.err)
 
         return True
@@ -46,5 +48,5 @@ class ZFS(object):
     def used(self, path):
         # zfs list -o used -H -p physics/backups/phys-solid/etc
 
-        r = lib.run_command([ZFS.zfs_command, 'list', '-o', 'used', '-H', '-p', path])
+        r = lib.run_command([ZFS.commands['zfs'], 'list', '-o', 'used', '-H', '-p', path])
         return r._replace(out=int(r.out))
