@@ -1,14 +1,14 @@
+import re
+
 from django.core.exceptions import ValidationError
 
-import collections
 import math
-
-Unit = collections.namedtuple('Unit', 'base, units')
 
 units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']
 
+rx = re.compile(r'^\s*([\d.]+)\s*([a-z]{1,2})?\s*$', re.IGNORECASE)
 
-# From http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
+# Originally based on: http://stackoverflow.com/questions/1094841/reusable-library-to-get-human-readable-version-of-file-size
 def humanize(size):
     # print('humanize(%s)' % size)
 
@@ -28,12 +28,15 @@ def dehumanize(size):
     if not size or size == '':
         return None
 
-    try:
-        # TODO? allow non-space separated here?
-        f, unit = size.split(' ')
-    except ValueError:
-        f = size
-        unit = 'B'
+    unit = units[0]
+
+    r = rx.match(size)
+    if r:
+        f = r.group(1)
+        if r.group(2):
+            unit = r.group(2)
+    else:
+        raise ValidationError('Please enter a value in the format: 123.45 [ %s ]' % ' | '.join(units))
 
     try:
         f = float(f)
