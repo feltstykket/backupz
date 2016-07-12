@@ -349,7 +349,8 @@
             "enabled": true,
             "expiration_algorithm": 0,
             "frequency": "1 00:00:00",
-            "max_jobs": 20,
+            "max_concurrent_jobs": 20,
+            "over_quota_response": null,
             "owner": null,
             "partial_okay": false,
             "password": "",
@@ -359,7 +360,7 @@
             "rsync_options": [
                 6
             ],
-            "schedule": 2,
+            "schedule": 1,
             "snapshots_to_keep": 1,
             "ssh_command": "/opt/csw/bin/ssh",
             "ssh_key": "/root/.ssh/default.key",
@@ -379,10 +380,11 @@
             "email_to": "",
             "enabled": true,
             "expiration_algorithm": 0,
-            "file_timestamp": "2016-07-01T17:11:49.565",
+            "file_timestamp": "2016-07-08T17:32:56.984",
             "frequency": null,
-            "max_jobs": null,
+            "max_concurrent_jobs": 2,
             "mountpoint": "/physics",
+            "over_quota_response": null,
             "owner": null,
             "partial_okay": null,
             "password": "",
@@ -405,18 +407,18 @@
     },
     {
         "fields": {
-            "allow_concurrent": false,
             "allowed_days": null,
             "backup_area": 3,
             "email_from": "",
             "email_to": "backups@ticket.physics.ucdavis.edu",
             "enabled": true,
             "expiration_algorithm": 0,
-            "file_timestamp": "2016-06-24T16:20:56.242",
+            "file_timestamp": "2016-07-08T17:25:13.263",
             "frequency": null,
             "ip": "169.237.42.75",
-            "max_jobs": null,
+            "max_concurrent_jobs": null,
             "name": "phys-solid",
+            "over_quota_response": null,
             "owner": 17,
             "partial_okay": null,
             "password": "",
@@ -448,8 +450,9 @@
             "expiration_algorithm": 0,
             "frequency": null,
             "host": 1,
-            "max_jobs": null,
+            "max_concurrent_jobs": null,
             "name": "var-spool-mail",
+            "over_quota_response": null,
             "owner": 13,
             "partial_okay": null,
             "password": "",
@@ -480,8 +483,9 @@
             "expiration_algorithm": 0,
             "frequency": null,
             "host": 1,
-            "max_jobs": null,
+            "max_concurrent_jobs": 1,
             "name": "etc",
+            "over_quota_response": null,
             "owner": 17,
             "partial_okay": null,
             "password": "",
@@ -504,6 +508,39 @@
     },
     {
         "fields": {
+            "allowed_days": null,
+            "backup_area": null,
+            "email_from": "",
+            "email_to": "",
+            "enabled": true,
+            "expiration_algorithm": null,
+            "frequency": null,
+            "host": 1,
+            "max_concurrent_jobs": 1,
+            "name": "home",
+            "over_quota_response": null,
+            "owner": null,
+            "partial_okay": null,
+            "password": "",
+            "path": "/home",
+            "post_backup_script": null,
+            "priority": 0,
+            "quota": null,
+            "rsync_options": [],
+            "schedule": 3,
+            "snapshots_to_keep": null,
+            "ssh_command": "",
+            "ssh_key": "",
+            "transport": null,
+            "use_max": null,
+            "use_warn": null,
+            "user": ""
+        },
+        "model": "backupz.job",
+        "pk": 3
+    },
+    {
+        "fields": {
             "end": "2016-06-24T16:50:53",
             "job": 2,
             "start": "2016-06-21T16:12:37",
@@ -511,5 +548,35 @@
         },
         "model": "backupz.backup",
         "pk": 1
+    },
+    {
+        "fields": {
+            "end": "2016-07-07T16:23:36",
+            "job": 3,
+            "start": "2016-07-07T14:59:01",
+            "status": 0
+        },
+        "model": "backupz.backup",
+        "pk": 2
+    },
+    {
+        "fields": {
+            "end": "2016-07-07T16:23:25",
+            "job": 2,
+            "start": "2016-07-07T15:20:30",
+            "status": 0
+        },
+        "model": "backupz.backup",
+        "pk": 3
+    },
+    {
+        "fields": {
+            "end": null,
+            "job": 1,
+            "start": "2016-07-08T17:15:23",
+            "status": -1
+        },
+        "model": "backupz.backup",
+        "pk": 4
     }
 ]
