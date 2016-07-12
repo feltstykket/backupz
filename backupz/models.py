@@ -15,7 +15,9 @@ import django_extras.db.models
 
 import django
 
+import backupz.humanize
 from . import lib
+from .lib import Status
 from .zfs import ZFS
 from . import bytefield
 
@@ -23,7 +25,7 @@ import settings
 
 zfs = ZFS()
 
-ZFSQuota = collections.namedtuple('ZFSQuota', 'quota zfs_path where')
+ZFSQuota = collections.namedtuple('ZFSQuota', 'quota bytes zfs_path where')
 ConcurrentJob = collections.namedtuple('ConcurrentJob', 'max q where')
 
 DAYS = ((0, 'Monday'),
@@ -251,12 +253,26 @@ class Config():
 
     def __getattr__(self, name):
         # print('Config: __getattr__(%s)' % name)
-        for t in [self.job, self.job.backup_area, self.job.host, self.job.host.backup_area,
-                  DefaultOption.objects.get()]:
-            if t is not None:
-                a = getattr(t, name)
-                if a is not None and a != '':
-                    return a
+
+        get = ''
+        if name.startswith('get_') and name.endswith('_display'):
+            get = name
+            name = name[4:-8]
+
+        for test in (
+                self.job,
+                self.job.backup_area,
+                self.job.host,
+                self.job.host.backup_area,
+                DefaultOption.objects.get()):
+
+            if test is not None:
+                attr = getattr(test, name)
+                if attr is not None and attr != '':
+                    if get:
+                        return getattr(test, get)
+                    else:
+                        return attr
 
         return None
 
@@ -268,19 +284,20 @@ class JobManager(models.Manager):
 
         # Order by priority and distance from last successful backup, taking into account frequency.
         for j in Job.objects.all():
-            if j.should_start(stamp) is True:
+            if j.should_start(stamp):
                 p = j.config.priority
                 if p not in run:
                     run[p] = {}
 
                 s = j.seconds_late(stamp)
-                if s not in run[p]:
-                    run[p][s] = []
+                if s.msg not in run[p]:
+                    run[p][s.msg] = []
 
-                run[p][s].append(j)
+                run[p][s.msg].append(j)
             else:
                 not_run.append(j)
 
+        #print('to_run(%s): %s' % (stamp, run))
         _run = [run[p][s] for p in sorted(run.keys(), reverse=True) for s in sorted(run[p].keys(), reverse=True)]
         return lib.flatten(_run), not_run
 
@@ -292,21 +309,16 @@ class Job(BackupZOption):
     backup_area = models.ForeignKey('Area', null=True, blank=True)
 
     def is_enabled(self):
-        """
-        CAUTION: you MUST check the return value against `is [not] True' as this returns a string for False.
-        """
-        # TODO: make a status class that overrides __bool__?
-
         if not DefaultOption.objects.get().enabled:
-            return 'Not enabled in default options'
+            return Status('Not enabled in default options')
         elif not self._active_backup_area().enabled:
-            return 'Not enabled in Area: ' + str(self._active_backup_area())
+            return Status('Not enabled in Area: ' + str(self._active_backup_area()))
         elif not self.host.enabled:
-            return 'Not enabled in Host: ' + str(self.host)
+            return Status('Not enabled in Host: ' + str(self.host))
         elif not self.enabled:
-            return 'Not enabled in Job: ' + str(self)
+            return Status('Not enabled in Job: ' + str(self))
 
-        return True
+        return Status(True)
 
     def list_backups(self):
         return Backup.objects.filter(job=self)
@@ -331,7 +343,6 @@ class Job(BackupZOption):
         # Default max_concurrent_jobs to 1 for Job objects.
         self._meta.get_field('max_concurrent_jobs').default = 1
 
-
     def __str__(self):  # __unicode__ on Python 2
         return "%s/%s (%s)" % (self.host.name, self.name, self.config.owner)
 
@@ -341,45 +352,56 @@ class Job(BackupZOption):
 
     objects = JobManager()
 
-
     def check_quota(self):
-        quotas = (ZFSQuota(self.quota, self._active_backup_area().zfs_path(self), 'Job'),
-                  ZFSQuota(self.host.quota, self._active_backup_area().zfs_path(self.host), 'Host'),
-                  ZFSQuota(self._active_backup_area().quota, self._active_backup_area().zfs_path(None), 'Area'),
-                  ZFSQuota(DefaultOption.objects.get(), self._active_backup_area().zfs_path(None, None), 'Default')
+        quotas = (ZFSQuota(self.quota, 0, self._active_backup_area().zfs_path(self), 'Job'),
+                  ZFSQuota(self.host.quota, 0, self._active_backup_area().zfs_path(self.host), 'Host'),
+                  ZFSQuota(self._active_backup_area().quota, 0, self._active_backup_area().zfs_path(None), 'Area'),
+                  ZFSQuota(DefaultOption.objects.get().quota, 0, self._active_backup_area().zfs_path(None, None),
+                           'Default')
                   )
 
         for q in quotas:
-            # TODO: check quota for job/host/area/default here
-            if q is not None and q > 0:
+            q = q._replace(bytes=backupz.humanize.dehumanize(q.quota))
+            if q.bytes and q.bytes > 0 and self.config.over_quota_response:
                 used = zfs.used(q.zfs_path)
-            #print(q.zfs_path, used.out, q.quota)
+                response = self.config.get_over_quota_response_display()
+                #print('check_quota: path=%s, used=%s, quota=%s (%s bytes): %s' %( q.zfs_path, used, q.quota, q.bytes, response))
+                if used >= q.bytes and response is not None:
+                    if response == 'Ignore':
+                        return Status(True, 'Over quota, but ignoring per configuration.')
+                    elif response == 'Email':
+                        # TODO: send email about over quota
+                        print("TODO: send email about over quota")
+                    elif response == 'Abort':
+                        return 'Job is over the %s quota: %s >= %s' % (q.where, backupz.humanize.humanize(used), q.quota)
+                    elif response == 'Delete Snapshots':
+                        # TODO: delete snapshots to get under quota
+                        print("TODO: delete snapshots to get under quota")
+                    else:
+                        raise ValueError('Unknow option in self.options.over_quota_response(%d): `%s\'' %(self.config.over_quota_response, response))
 
-        return True
+        return Status(True)
 
     @functools.lru_cache(maxsize=1024, typed=False)
     def seconds_late(self, stamp=django.utils.timezone.now()):
-        """
-        CAUTION: you MUST check the return value against the type int as it returns strings on False.
-        """
         try:
             # Check to make sure no job is currently running.
             backup = Backup.objects.filter(job=self).latest(field_name='start')
 
             # Some jobs may allow concurrent backups, so not appropriate here
-            #if backup.status < 0 or backup.end is None:
+            # if backup.status < 0 or backup.end is None:
             #    return 'Job currently in progress'
 
             # Make sure it's time for another backup.
             diff = stamp - (backup.start + self.config.frequency)
             if diff.total_seconds() < 0:
-                return 'Not yet time for another job, last was %s' % backup.start
+                return Status('Not yet time for another job, last was %s' % backup.start)
 
             # If we get this far then the backup is due.
-            return int(diff.total_seconds())
+            return Status(True, int(diff.total_seconds()))
         except Backup.DoesNotExist:
             # Backup has never run or has never finished => very high priority.
-            return sys.maxsize
+            return Status(True, sys.maxsize)
 
 
     def check_max_concurrent_jobs(self):
@@ -387,36 +409,28 @@ class Job(BackupZOption):
             ConcurrentJob(self.max_concurrent_jobs, Q(job=self), 'Job'),
             ConcurrentJob(self.host.max_concurrent_jobs, Q(job__host=self.host), 'Host'),
             ConcurrentJob(self._active_backup_area().max_concurrent_jobs,
-                          (Q(job__backup_area=self._active_backup_area()) | Q(job__host__backup_area=self._active_backup_area())), 'Area'),
+                          (Q(job__backup_area=self._active_backup_area()) | Q(
+                              job__host__backup_area=self._active_backup_area())), 'Area'),
             ConcurrentJob(DefaultOption.objects.get().max_concurrent_jobs, Q(), 'Default'),
         )
         for t in test:
-            #print('check_max_concurrent_jobs(%s):%s: ' % (self, t.where), end='')
+            # print('check_max_concurrent_jobs(%s):%s: ' % (self, t.where), end='')
             if t.max and t.max > 0:
                 count = Backup.objects.filter(Q(status__lt=0) | Q(end__isnull=True), t.q).count()
-                #print ('max=%d current=%d' % (t.max, count), end='')
+                # print ('max=%d current=%d' % (t.max, count), end='')
                 if count >= t.max:
-                    return 'Too many jobs currently running in %s: %d' % (t.where, count)
-            #print()
+                    return Status('Too many jobs currently running in %s: %d' % (t.where, count))
+                    # print()
 
         # If we get this far, the job is allowed to run.
-        return True
+        return Status(True)
 
 
-    def should_start(self, stamp=django.utils.timezone.now()):
-        """
-        CAUTION: you MUST check the return value against `is [not] True' as this returns a string for False.
-        """
-
-        # Make sure the job/host/area/default is enabled.
-        r = self.is_enabled()
-        if r is not True:
-            return r
-
+    def check_mountpoints(self, stamp):
         # Don't auto-create the top level file-system. This is usually created when the pool is created..
         root_fs = self._active_backup_area().zfs_path(None, None)
         if not zfs.isfilesystem(root_fs):
-            return 'Top level ZFS file-system does not exist: %s' % root_fs
+            return Status('Top level ZFS file-system does not exist: %s' % root_fs)
 
         # Try to create file-systems under the top level. Create returns true if it already exists.
         zfs_filesystems = (self._active_backup_area().zfs_path(None),
@@ -425,7 +439,7 @@ class Job(BackupZOption):
                            )
         for z in zfs_filesystems:
             if not zfs.create_filesystem(z):
-                return 'ZFS file-system does not exist and error creating: %s' % z
+                return Status('ZFS file-system does not exist and error creating: %s' % z)
 
         # Make sure all ZFS file-systems are actually mounted.
         mountpoints = ((self._active_backup_area().fs_path(None, None), 'Area'),
@@ -435,44 +449,57 @@ class Job(BackupZOption):
                        )
         for mp in mountpoints:
             if not os.path.ismount(mp[0]):
-                return '%s mount point is not mounted: %s' % (mp[1], mp[0])
+                return Status('%s mount point is not mounted: %s' % (mp[1], mp[0]))
+
+        return Status(True)
+
+
+    def should_start(self, stamp=django.utils.timezone.now()):
+        # Make sure the job/host/area/default is enabled.
+        r = self.is_enabled()
+        if not r:
+            return r
+
+        r = self.check_mountpoints(stamp)
+        if not r:
+            return r
 
         r = self.check_quota()
-        if r is not True:
+        if not r:
             return r
 
         r = self.check_max_concurrent_jobs()
-        if r is not True:
+        if not r:
             return r
 
         r = self.seconds_late(stamp)
-        if isinstance(r, str):
+        if not r:
             return r
 
         # Make sure this is an allowed day.
         if str(stamp.weekday()) not in self.config.allowed_days:
-            return 'Today not an allowed day'
+            return Status('Today not an allowed day')
 
         # And finally, check against the allowed time.
         schedule = self.config.schedule
         if schedule.start_time <= schedule.end_time:
             if schedule.start_time <= stamp.time() <= schedule.end_time:
-                return True
+                return Status(True)
             else:
-                return 'Not within window'
+                return Status('Not within window')
         else:
             if schedule.start_time <= stamp.time() or stamp.time() <= schedule.end_time:
-                return True
+                return Status(True)
             else:
-                return 'Not within window'
+                return Status('Not within window')
 
 
 class Backup(models.Model):
     STATUS = (
         (-1, 'In Progress'),
-        (0, 'Success'),
-        (1, 'Success (with minor errors)'),
-        (2, 'Failure'),
+        ( 0, 'Success'),
+        ( 1, 'Success (with minor errors)'),
+        ( 2, 'Failure'),
     )
 
     job = models.ForeignKey(Job)
@@ -553,7 +580,6 @@ class Backup(models.Model):
             os.environ['RSYNC_PASSWORD'] = pw
 
         return list(lib.flatten(command))
-
 
     def __str__(self):  # __unicode__ on Python 2
         s = "%s/%s @ %s" % (self.job.host.name, self.job.name, self.timestamp())

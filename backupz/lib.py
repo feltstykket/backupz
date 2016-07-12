@@ -25,3 +25,21 @@ def flatten(l):
                 yield sub
         else:
             yield el
+
+class Status(object):
+    def __init__(self, status, msg=None):
+        if isinstance(status, bool):
+            self.status = status
+            self.msg = msg
+        else:
+            self.status = False
+            self.msg = status
+
+    def __str__(self):
+        if self.msg:
+            return '%s' % self.msg
+        else:
+            return '%s' % self.status
+
+    def __bool__(self):
+        return self.status

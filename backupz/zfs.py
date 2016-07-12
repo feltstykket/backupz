@@ -49,4 +49,4 @@ class ZFS(object):
         # zfs list -o used -H -p physics/backups/phys-solid/etc
 
         r = lib.run_command([ZFS.commands['zfs'], 'list', '-o', 'used', '-H', '-p', path])
-        return r._replace(out=int(r.out))
+        return int(r.out)
