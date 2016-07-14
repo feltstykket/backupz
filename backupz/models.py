@@ -50,8 +50,10 @@ class Schedule(models.Model):
     start_time = models.TimeField()
     end_time = models.TimeField()
 
+
     def __str__(self):  # __unicode__ on Python 2
         return '%s (%s-%s)' % (self.name, self.start_time, self.end_time)
+
 
     class Meta:
         ordering = ('name',)
@@ -61,11 +63,14 @@ class PostBackupScript(models.Model):
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField()
 
+
     def path(self):
         return os.path.join(settings.config_path, 'scripts', self.name)
 
+
     def __str__(self):  # __unicode__ on Python 2
         return '%s: %s' % (self.name, self.description)
+
 
     class Meta:
         ordering = ('name',)
@@ -77,8 +82,10 @@ class SnapshotsToKeep(models.Model):
     monthly = models.PositiveSmallIntegerField()
     yearly = models.PositiveSmallIntegerField()
 
+
     def __str__(self):
         return 'Daily: %d, Weekly: %d, Monthly: %d, Yearly: %d' % (self.daily, self.weekly, self.monthly, self.yearly)
+
 
     class Meta:
         unique_together = ('daily', 'weekly', 'monthly', 'yearly')
@@ -89,10 +96,12 @@ class RsyncOption(models.Model):
     name = models.CharField(max_length=50, unique=True)
     value = models.CharField(max_length=50, unique=True)
 
+
     # "--archive --one-file-system --delete"
 
     def __str__(self):  # __unicode__ on Python 2
         return "%s (%s)" % (self.name, self.value)
+
 
     class Meta:
         ordering = ('name',)
@@ -104,8 +113,10 @@ class Transport(models.Model):
     port = models.PositiveSmallIntegerField(unique=True)
     separator = models.CharField(max_length=2, default=':')
 
+
     def __str__(self):  # __unicode__ on Python 2
         return '%s (%s)' % (self.command, self.port)
+
 
     class Meta:
         unique_together = ('command', 'port',)
@@ -115,8 +126,10 @@ class Transport(models.Model):
 class Owner(models.Model):
     name = models.CharField(max_length=50, unique=True)
 
+
     def __str__(self):
         return self.name
+
 
     class Meta:
         ordering = ('name',)
@@ -172,6 +185,7 @@ class BackupZOption(models.Model):
 
     owner = models.ForeignKey(Owner, null=True, blank=True)
 
+
     class Meta:
         abstract = True
 
@@ -180,8 +194,10 @@ class DefaultOption(solo.models.SingletonModel, BackupZOption):
     def config_file(self):
         return _config_file('areas', 'default')
 
+
     def __str__(self):
         return 'Default BackupZ Options'
+
 
     class Meta:
         verbose_name = 'Default BackupZ Options'
@@ -194,13 +210,16 @@ class Area(BackupZOption):
 
     file_timestamp = models.DateTimeField(auto_now=True)
 
+
     def fs_path(self, which, what='backups'):
         p = os.path.join('/', self.mountpoint)
         return self._path(p, which, what)
 
+
     def zfs_path(self, which, what='backups'):
         p = self.zpool
         return self._path(p, which, what)
+
 
     def _path(self, p, which, what):
 
@@ -217,11 +236,14 @@ class Area(BackupZOption):
 
         return p
 
+
     def config_file(self):
         return _config_file('areas', self.display_name)
 
+
     class Meta:
         ordering = ('zpool',)
+
 
     def __str__(self):  # __unicode__ on Python 2
         return self.fs_path(None)
@@ -234,14 +256,18 @@ class Host(BackupZOption):
 
     file_timestamp = models.DateTimeField(auto_now=True)
 
+
     def list_backups(self):
         return Backup.objects.filter(job__host=self)
+
 
     def config_file(self):
         return _config_file('hosts', self.name)
 
+
     def __str__(self):  # __unicode__ on Python 2
         return "%s (%s)" % (self.name, self.owner)
+
 
     class Meta:
         ordering = ('name',)
@@ -250,6 +276,7 @@ class Host(BackupZOption):
 class Config():
     def __init__(self, job):
         self.job = job
+
 
     def __getattr__(self, name):
         # print('Config: __getattr__(%s)' % name)
@@ -297,7 +324,7 @@ class JobManager(models.Manager):
             else:
                 not_run.append(j)
 
-        #print('to_run(%s): %s' % (stamp, run))
+        # print('to_run(%s): %s' % (stamp, run))
         _run = [run[p][s] for p in sorted(run.keys(), reverse=True) for s in sorted(run[p].keys(), reverse=True)]
         return lib.flatten(_run), not_run
 
@@ -308,11 +335,12 @@ class Job(BackupZOption):
     path = models.CharField(max_length=200)
     backup_area = models.ForeignKey('Area', null=True, blank=True)
 
+
     def is_enabled(self):
         if not DefaultOption.objects.get().enabled:
             return Status('Not enabled in default options')
-        elif not self._active_backup_area().enabled:
-            return Status('Not enabled in Area: ' + str(self._active_backup_area()))
+        elif not self.active_backup_area().enabled:
+            return Status('Not enabled in Area: ' + str(self.active_backup_area()))
         elif not self.host.enabled:
             return Status('Not enabled in Host: ' + str(self.host))
         elif not self.enabled:
@@ -320,20 +348,25 @@ class Job(BackupZOption):
 
         return Status(True)
 
+
     def list_backups(self):
         return Backup.objects.filter(job=self)
 
-    def _active_backup_area(self):
+
+    def active_backup_area(self):
         if self.backup_area:
             return self.backup_area
         else:
             return self.host.backup_area
 
+
     def fs_path(self):
-        return self._active_backup_area().fs_path(self)
+        return self.active_backup_area().fs_path(self)
+
 
     def zfs_path(self):
-        return self._active_backup_area().zfs_path(self)
+        return self.active_backup_area().zfs_path(self)
+
 
     def __init__(self, *args, **kwargs):
         self.config = Config(self)
@@ -343,21 +376,24 @@ class Job(BackupZOption):
         # Default max_concurrent_jobs to 1 for Job objects.
         self._meta.get_field('max_concurrent_jobs').default = 1
 
+
     def __str__(self):  # __unicode__ on Python 2
         return "%s/%s (%s)" % (self.host.name, self.name, self.config.owner)
+
 
     class Meta:
         unique_together = (('host', 'name'), ('host', 'path'))
         ordering = ('host', 'name')
 
+
     objects = JobManager()
 
+
     def check_quota(self):
-        quotas = (ZFSQuota(self.quota, 0, self._active_backup_area().zfs_path(self), 'Job'),
-                  ZFSQuota(self.host.quota, 0, self._active_backup_area().zfs_path(self.host), 'Host'),
-                  ZFSQuota(self._active_backup_area().quota, 0, self._active_backup_area().zfs_path(None), 'Area'),
-                  ZFSQuota(DefaultOption.objects.get().quota, 0, self._active_backup_area().zfs_path(None, None),
-                           'Default')
+        quotas = (ZFSQuota(self.quota, 0, self.active_backup_area().zfs_path(self), 'Job'),
+                  ZFSQuota(self.host.quota, 0, self.active_backup_area().zfs_path(self.host), 'Host'),
+                  ZFSQuota(self.active_backup_area().quota, 0, self.active_backup_area().zfs_path(None), 'Area'),
+                  ZFSQuota(DefaultOption.objects.get().quota, 0, self.active_backup_area().zfs_path(None, None), 'Default')
                   )
 
         for q in quotas:
@@ -365,7 +401,7 @@ class Job(BackupZOption):
             if q.bytes and q.bytes > 0 and self.config.over_quota_response:
                 used = zfs.used(q.zfs_path)
                 response = self.config.get_over_quota_response_display()
-                #print('check_quota: path=%s, used=%s, quota=%s (%s bytes): %s' %( q.zfs_path, used, q.quota, q.bytes, response))
+                # print('check_quota: path=%s, used=%s, quota=%s (%s bytes): %s' %( q.zfs_path, used, q.quota, q.bytes, response))
                 if used >= q.bytes and response is not None:
                     if response == 'Ignore':
                         return Status(True, 'Over quota, but ignoring per configuration.')
@@ -378,9 +414,10 @@ class Job(BackupZOption):
                         # TODO: delete snapshots to get under quota
                         print("TODO: delete snapshots to get under quota")
                     else:
-                        raise ValueError('Unknow option in self.options.over_quota_response(%d): `%s\'' %(self.config.over_quota_response, response))
+                        raise ValueError('Unknown option in self.options.over_quota_response(%d): `%s\'' % (self.config.over_quota_response, response))
 
         return Status(True)
+
 
     @functools.lru_cache(maxsize=1024, typed=False)
     def seconds_late(self, stamp=django.utils.timezone.now()):
@@ -408,9 +445,8 @@ class Job(BackupZOption):
         test = (
             ConcurrentJob(self.max_concurrent_jobs, Q(job=self), 'Job'),
             ConcurrentJob(self.host.max_concurrent_jobs, Q(job__host=self.host), 'Host'),
-            ConcurrentJob(self._active_backup_area().max_concurrent_jobs,
-                          (Q(job__backup_area=self._active_backup_area()) | Q(
-                              job__host__backup_area=self._active_backup_area())), 'Area'),
+            ConcurrentJob(self.active_backup_area().max_concurrent_jobs,
+                          (Q(job__backup_area=self.active_backup_area()) | Q(job__host__backup_area=self.active_backup_area())), 'Area'),
             ConcurrentJob(DefaultOption.objects.get().max_concurrent_jobs, Q(), 'Default'),
         )
         for t in test:
@@ -428,23 +464,23 @@ class Job(BackupZOption):
 
     def check_mountpoints(self, stamp):
         # Don't auto-create the top level file-system. This is usually created when the pool is created..
-        root_fs = self._active_backup_area().zfs_path(None, None)
+        root_fs = self.active_backup_area().zfs_path(None, None)
         if not zfs.isfilesystem(root_fs):
             return Status('Top level ZFS file-system does not exist: %s' % root_fs)
 
         # Try to create file-systems under the top level. Create returns true if it already exists.
-        zfs_filesystems = (self._active_backup_area().zfs_path(None),
-                           self._active_backup_area().zfs_path(self.host),
-                           self._active_backup_area().zfs_path(self),
+        zfs_filesystems = (self.active_backup_area().zfs_path(None),
+                           self.active_backup_area().zfs_path(self.host),
+                           self.active_backup_area().zfs_path(self),
                            )
         for z in zfs_filesystems:
             if not zfs.create_filesystem(z):
                 return Status('ZFS file-system does not exist and error creating: %s' % z)
 
         # Make sure all ZFS file-systems are actually mounted.
-        mountpoints = ((self._active_backup_area().fs_path(None, None), 'Area'),
-                       (self._active_backup_area().fs_path(None), 'Backups'),
-                       (self._active_backup_area().fs_path(self.host), 'Host'),
+        mountpoints = ((self.active_backup_area().fs_path(None, None), 'Area'),
+                       (self.active_backup_area().fs_path(None), 'Backups'),
+                       (self.active_backup_area().fs_path(self.host), 'Host'),
                        (self.fs_path(), 'Job'),
                        )
         for mp in mountpoints:
@@ -497,9 +533,9 @@ class Job(BackupZOption):
 class Backup(models.Model):
     STATUS = (
         (-1, 'In Progress'),
-        ( 0, 'Success'),
-        ( 1, 'Success (with minor errors)'),
-        ( 2, 'Failure'),
+        (0, 'Success'),
+        (1, 'Success (with minor errors)'),
+        (2, 'Failure'),
     )
 
     job = models.ForeignKey(Job)
@@ -507,10 +543,12 @@ class Backup(models.Model):
     end = models.DateTimeField(null=True, blank=True)
     status = models.SmallIntegerField(choices=STATUS, default=STATUS[0][0])
 
+
     def timestamp(self, stamp=None):
         if not stamp:
             stamp = self.start
         return stamp.strftime("%Y-%m-%d_%H-%M.%S")
+
 
     def log_file(self):
         p = os.path.join(settings.log_path, self.job.host.name)
@@ -519,6 +557,7 @@ class Backup(models.Model):
 
         s = "%s-%s.log" % (self.job.name, self.timestamp())
         return os.path.join(p, s)
+
 
     def rsync_arguments(self):
         args = []
@@ -536,6 +575,7 @@ class Backup(models.Model):
             args.append("--exclude-from='%s'" % fname)
 
         return args
+
 
     def cli(self):
         """
@@ -581,11 +621,13 @@ class Backup(models.Model):
 
         return list(lib.flatten(command))
 
+
     def __str__(self):  # __unicode__ on Python 2
         s = "%s/%s @ %s" % (self.job.host.name, self.job.name, self.timestamp())
         if self.end:
             s += ' - %s (%s)' % (self.timestamp(self.end), self.end - self.start)
         return s
+
 
     class Meta:
         ordering = ('job__host__name', 'job__name', 'start',)
