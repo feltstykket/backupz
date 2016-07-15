@@ -31,11 +31,29 @@ class Sync(object):
             return self.file2db(what)
 
 
+    def write_fields(self, what, file):
+        fields = sorted(f.name for f in what._meta.fields if f.name != 'id')
+
+        for field in fields:
+            value = getattr(what, field)
+            if value and value is not None:
+                file.write("%s=%s\n" % (field, value))
+
+
     def db2file(self, what):
-        # TODO: implement
-        print('Sync db2file: ', what.config_file())
+        with open(what.config_file(), 'w') as config:
+            config.write("[defaults]\n")
+            self.write_fields(what, config)
+
+            if isinstance(what, Host):
+                for job in Job.objects.filter(host=what):
+                    config.write("\n[%s]\n" % job.name)
+                    self.write_fields(job, config)
+
+        # Finally, update the mtime of the file to match the database so it does not sync next time.
+        os.utime(what.config_file(), times=(what.mtime.timestamp(), what.mtime.timestamp()))
 
     def file2db(self, what):
         # TODO: implement
-        print('Sync file2db: ', what.config_file())
+        print('TODO sync file2db: ', what.config_file())
 
