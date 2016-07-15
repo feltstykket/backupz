@@ -1,5 +1,10 @@
 #! /usr/bin/python3
 
+"""
+# Run a local mail server for debug/testing
+python -u -m smtpd -n -c DebuggingServer localhost:1025 | tee email.txt
+"""
+
 import os
 
 import time
@@ -15,6 +20,11 @@ start = datetime.datetime.now()
 
 from backupz.models import *
 
+import backupz.sync
+
+sync = backupz.sync.Sync()
+sync.all()
+
 defaults = DefaultOption.objects.get()
 
 #print('Defaults config file: ', defaults.config_file())
@@ -24,10 +34,10 @@ jobs = Job.objects.filter(host=host)
 
 to_run, not_run = Job.objects.to_run(start)
 for j in to_run:
-    print('Run: %s : %s' % (j, j.should_start()))
+    print('To Run:  %s : %s' % (j, j.should_start(start)))
 print()
 for j in not_run:
-    print('Not run: %s : %s' % (j, j.should_start()))
+    print('Not run: %s : %s' % (j, j.should_start(start)))
 print()
 
 for j in jobs:
@@ -67,3 +77,5 @@ for j in jobs:
 print('zfs.isfilesystem: ', zfs.isfilesystem.cache_info())
 print('zfs.used: ', zfs.used.cache_info())
 print('Job.seconds: ', Job.seconds_late.cache_info())
+
+email.send()
