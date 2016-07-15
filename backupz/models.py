@@ -191,6 +191,19 @@ class BackupZOption(models.Model):
 
 
 class DefaultOption(solo.models.SingletonModel, BackupZOption):
+    def __init__(self, *args, **kwargs):
+        self.config = Config(self)
+        super(BackupZOption, self).__init__(*args, **kwargs)
+
+        # http://stackoverflow.com/questions/6377631/how-to-override-the-default-value-of-a-model-field-from-an-abstract-base-class/6379556#6379556
+        # Default almost all options to required:
+        for field in self._meta.get_fields():
+            # Exclude a few that don't need to be set at the top level
+            if field.name not in ['password', 'post_backup_script', 'owner']:
+                field.blank = False
+                field.null = False
+
+
     def config_file(self):
         return _config_file('areas', 'default')
 
