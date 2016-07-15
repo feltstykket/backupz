@@ -193,6 +193,8 @@ class BackupZOption(models.Model):
 
 
 class DefaultOption(solo.models.SingletonModel, BackupZOption):
+    mtime = models.DateTimeField(auto_now=True)
+
     def __init__(self, *args, **kwargs):
         self.config = Config(self)
         super(BackupZOption, self).__init__(*args, **kwargs)
@@ -223,7 +225,7 @@ class Area(BackupZOption):
     mountpoint = models.CharField(max_length=200, default='/', unique=True)
     display_name = models.CharField(max_length=200, unique=True)
 
-    file_timestamp = models.DateTimeField(auto_now=True)
+    mtime = models.DateTimeField(auto_now=True)
 
 
     def fs_path(self, which, what='backups'):
@@ -269,7 +271,7 @@ class Host(BackupZOption):
     ip = models.GenericIPAddressField(protocol='IPv4', unique=True)
     backup_area = models.ForeignKey('Area', null=True, blank=True)
 
-    file_timestamp = models.DateTimeField(auto_now=True)
+    mtime = models.DateTimeField(auto_now=True)
 
 
     def list_backups(self):
@@ -412,13 +414,12 @@ class Job(BackupZOption):
 
         for q in quotas:
             q = q._replace(bytes=backupz.humanize.dehumanize(q.quota))
-            print('check_quota: area=%s, path=%s, quota=%s (%s bytes) (%s)' % (q.where, q.zfs_path, q.quota, q.bytes, self.config.over_quota_response))
             if q.bytes and q.bytes > 0 and self.config.over_quota_response is not None:
                 response = self.config.get_over_quota_response_display()
                 used = zfs.used(q.zfs_path)
                 q = q._replace(used=used)
 
-                print('check_quota: path=%s, used=%s, quota=%s (%s bytes): %s' % (q.zfs_path, used, q.quota, q.bytes, response))
+                #print('check_quota: path=%s, used=%s, quota=%s (%s bytes): %s' % (q.zfs_path, used, q.quota, q.bytes, response))
 
                 if used >= q.bytes:
                     if response == 'Ignore':
