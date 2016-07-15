@@ -7,18 +7,20 @@ import django.utils.text
 
 from . import humanize
 
+
 class BytesFieldForm(forms.CharField):
     def __init__(self, *args, **kwargs):
-       #print('BytesFieldForm::__init__: %s :: %s' % (args, kwargs))
+        # print('BytesFieldForm::__init__: %s :: %s' % (args, kwargs))
         super(BytesFieldForm, self).__init__(*args, **kwargs)
-        self.validators=[humanize.dehumanize]
+        self.validators = [humanize.dehumanize]
 
 
 class BytesField(models.BigIntegerField, metaclass=models.SubfieldBase):
     description = 'Store bytes, but add/show in MB/GB/TB'
 
+
     def __init__(self, *args, **kwargs):
-       #print('BytesField::__init__: %s :: %s' % (args, kwargs))
+        # print('BytesField::__init__: %s :: %s' % (args, kwargs))
         super(BytesField, self).__init__(*args, **kwargs)
 
 
@@ -26,9 +28,10 @@ class BytesField(models.BigIntegerField, metaclass=models.SubfieldBase):
         value = self.value_from_object(obj)
         return self.get_prep_value(value)
 
+
     def formfield(self, **kwargs):
-        defaults = {'required': not self.blank,
-                    'label': django.utils.text.capfirst(self.verbose_name),
+        defaults = {'required':  not self.blank,
+                    'label':     django.utils.text.capfirst(self.verbose_name),
                     'help_text': self.help_text,
                     }
         if self.has_default():
@@ -36,11 +39,12 @@ class BytesField(models.BigIntegerField, metaclass=models.SubfieldBase):
         defaults.update(kwargs)
         return BytesFieldForm(**defaults)
 
+
     def from_db_value(self, value, expression, connection, context):
         if value is None:
             return value
 
-        #print('BytesField::from_db_value:', value)
+        # print('BytesField::from_db_value:', value)
         return humanize.humanize(value)
 
 
@@ -54,7 +58,7 @@ class BytesField(models.BigIntegerField, metaclass=models.SubfieldBase):
         if isinstance(value, str):
             return value
 
-        #print('BytesField::to_python: %s (%s)' % (value, humanize(value)))
+        # print('BytesField::to_python: %s (%s)' % (value, humanize(value)))
         return humanize.humanize(value)
 
 
@@ -62,7 +66,7 @@ class BytesField(models.BigIntegerField, metaclass=models.SubfieldBase):
         if value is None:
             return value
 
-        #print('BytesField::get_prep_value: %s' % value)
+        # print('BytesField::get_prep_value: %s' % value)
         return humanize.dehumanize(value)
 
 
@@ -70,11 +74,12 @@ class BytesField(models.BigIntegerField, metaclass=models.SubfieldBase):
         if value is None:
             return value
 
-       #print('BytesField::get_db_prep_value: %s' % value)
+            # print('BytesField::get_db_prep_value: %s' % value)
         return humanize.dehumanize(value)
 
+
     def clean(self, value, model_instance):
-       #print('BytesField::clean: (%s)' % value)
+        # print('BytesField::clean: (%s)' % value)
 
         value = humanize.dehumanize(value)
 
@@ -82,4 +87,3 @@ class BytesField(models.BigIntegerField, metaclass=models.SubfieldBase):
             raise ValidationError('Max value is 9,223,372,036,854,775,807 bytes, or 7.9(ish) EB')
 
         return value
-
