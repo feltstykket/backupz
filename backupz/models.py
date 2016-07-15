@@ -17,15 +17,18 @@ import django
 
 import backupz.humanize
 from . import lib
-from .lib import Status
-from .zfs import ZFS
 from . import bytefield
+
+from .lib import Status
+from .email import Email
+from .zfs import ZFS
 
 import settings
 
 zfs = ZFS()
+email = Email()
 
-ZFSQuota = collections.namedtuple('ZFSQuota', 'quota bytes zfs_path where')
+ZFSQuota = collections.namedtuple('ZFSQuota', 'quota bytes used zfs_path where')
 ConcurrentJob = collections.namedtuple('ConcurrentJob', 'max q where')
 
 DAYS = ((0, 'Monday'),
@@ -147,7 +150,6 @@ class BackupZOption(models.Model):
         (0, 'Ignore'),
         (1, 'Email'),
         (2, 'Abort'),
-        (3, 'Delete Snapshots')
     )
     over_quota_response = models.SmallIntegerField(choices=OVER_QUOTA, default=None, null=True, blank=True)
 
@@ -348,6 +350,13 @@ class Job(BackupZOption):
     path = models.CharField(max_length=200)
     backup_area = models.ForeignKey('Area', null=True, blank=True)
 
+    objects = JobManager()
+
+
+    class Meta:
+        unique_together = (('host', 'name'), ('host', 'path'))
+        ordering = ('host', 'name')
+
 
     def is_enabled(self):
         if not DefaultOption.objects.get().enabled:
@@ -394,42 +403,58 @@ class Job(BackupZOption):
         return "%s/%s (%s)" % (self.host.name, self.name, self.config.owner)
 
 
-    class Meta:
-        unique_together = (('host', 'name'), ('host', 'path'))
-        ordering = ('host', 'name')
-
-
-    objects = JobManager()
-
-
     def check_quota(self):
-        quotas = (ZFSQuota(self.quota, 0, self.active_backup_area().zfs_path(self), 'Job'),
-                  ZFSQuota(self.host.quota, 0, self.active_backup_area().zfs_path(self.host), 'Host'),
-                  ZFSQuota(self.active_backup_area().quota, 0, self.active_backup_area().zfs_path(None), 'Area'),
-                  ZFSQuota(DefaultOption.objects.get().quota, 0, self.active_backup_area().zfs_path(None, None), 'Default')
+        quotas = (ZFSQuota(self.quota, 0, 0, self.active_backup_area().zfs_path(self), 'Job'),
+                  ZFSQuota(self.host.quota, 0, 0, self.active_backup_area().zfs_path(self.host), 'Host'),
+                  ZFSQuota(self.active_backup_area().quota, 0, 0, self.active_backup_area().zfs_path(None), 'Area'),
+                  ZFSQuota(DefaultOption.objects.get().quota, 0, 0, self.active_backup_area().zfs_path(None, None), 'Default')
                   )
 
         for q in quotas:
             q = q._replace(bytes=backupz.humanize.dehumanize(q.quota))
-            if q.bytes and q.bytes > 0 and self.config.over_quota_response:
-                used = zfs.used(q.zfs_path)
+            print('check_quota: area=%s, path=%s, quota=%s (%s bytes) (%s)' % (q.where, q.zfs_path, q.quota, q.bytes, self.config.over_quota_response))
+            if q.bytes and q.bytes > 0 and self.config.over_quota_response is not None:
                 response = self.config.get_over_quota_response_display()
-                # print('check_quota: path=%s, used=%s, quota=%s (%s bytes): %s' %( q.zfs_path, used, q.quota, q.bytes, response))
-                if used >= q.bytes and response is not None:
+                used = zfs.used(q.zfs_path)
+                q = q._replace(used=used)
+
+                print('check_quota: path=%s, used=%s, quota=%s (%s bytes): %s' % (q.zfs_path, used, q.quota, q.bytes, response))
+
+                if used >= q.bytes:
                     if response == 'Ignore':
+                        if q.where in ['Area', 'Default']:
+                            # Possibly override the ignore
+                            if self.active_backup_area().get_over_quota_response_display() == 'Email':
+                                # Only email to the Area admin if they have sent an email_to
+                                email_from = self.active_backup_area().email_from or DefaultOption.objects.get().email_from
+                                email_to = self.active_backup_area().email_to
+                                if email_to:
+                                    email.quota(self, q, email_from, email_to)
+                            elif DefaultOption.objects.get().get_over_quota_response_display() == 'Email':
+                                email_from = DefaultOption.objects.get().email_from
+                                email_to = DefaultOption.objects.get().email_to
+                                email.quota(self, q, email_from, email_to)
+
                         return Status(True, 'Over quota, but ignoring per configuration.')
                     elif response == 'Email':
-                        # TODO: send email about over quota
-                        print("TODO: send email about over quota")
+                        email.quota(self, q, self.config.email_from, self.config.email_to, self.email_cc(), extra=', but backup proceeded')
+                        return Status(True, 'Over quota, sent email and continuing.')
                     elif response == 'Abort':
-                        return 'Job is over the %s quota: %s >= %s' % (q.where, backupz.humanize.humanize(used), q.quota)
-                    elif response == 'Delete Snapshots':
-                        # TODO: delete snapshots to get under quota
-                        print("TODO: delete snapshots to get under quota")
+                        email.quota(self, q, self.config.email_from, self.config.email_to, extra=': Backup ABORTED!')
+                        return Status('Job is over the %s quota: %s >= %s' % (q.where, backupz.humanize.humanize(used), q.quota))
                     else:
                         raise ValueError('Unknown option in self.options.over_quota_response(%d): `%s\'' % (self.config.over_quota_response, response))
 
         return Status(True)
+
+
+    def email_cc(self):
+        return [x.email_to for x in (self,
+                                     self.backup_area,
+                                     self.host,
+                                     self.host.backup_area,
+                                     DefaultOption.objects.get())
+                if x and x.email_to and x.email_to != '']
 
 
     @functools.lru_cache(maxsize=1024, typed=False)
