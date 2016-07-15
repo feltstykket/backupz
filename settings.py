@@ -142,3 +142,12 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'),
 ]
+
+# Define an email host for Django to use
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'localhost'
+EMAIL_PORT = 25
+if DEBUG:
+    # Run a local server with: python -m smtpd -n -c DebuggingServer localhost:1025
+    EMAIL_HOST = 'localhost'
+    EMAIL_PORT = 1025
