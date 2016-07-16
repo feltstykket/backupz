@@ -3,9 +3,11 @@ The beginning of a module to do two way sync between the BackupZ database object
 """
 
 import datetime
+import operator
 import os.path
 
 from .models import *
+
 
 class Sync(object):
     def __init__(self):
@@ -13,6 +15,7 @@ class Sync(object):
 
 
     def all(self):
+        # prefetch_related
         self.sync(DefaultOption.objects.get())
 
         for area in Area.objects.all():
@@ -32,12 +35,24 @@ class Sync(object):
 
 
     def write_fields(self, what, file):
-        fields = sorted(f.name for f in what._meta.fields if f.name != 'id')
+        fields = sorted(what._meta.get_fields(include_parents=False), key=operator.attrgetter('name'))
 
         for field in fields:
-            value = getattr(what, field)
-            if value and value is not None:
-                file.write("%s=%s\n" % (field, value))
+            if field.name in ['id']:
+                # Internal fields to skip
+                continue
+
+            try:
+                if isinstance(field, models.ManyToManyField):
+                    # Have to special case these as the value isn't readily available
+                    for x in getattr(what, field.name).all():
+                        file.write("%s=%s\n" % (field.name, x.value))
+                else:
+                    value = getattr(what, field.name)
+                    if value and value is not None:
+                        file.write("%s=%s\n" % (field.name, value))
+            except AttributeError:
+                pass
 
 
     def db2file(self, what):
@@ -53,7 +68,7 @@ class Sync(object):
         # Finally, update the mtime of the file to match the database so it does not sync next time.
         os.utime(what.config_file(), times=(what.mtime.timestamp(), what.mtime.timestamp()))
 
+
     def file2db(self, what):
         # TODO: implement
         print('TODO sync file2db: ', what.config_file())
-
